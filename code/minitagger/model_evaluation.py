@@ -165,7 +165,7 @@ def report_fscore(predictions_file):
         fp_exact += fp
         fn_exact += fn
 
-    print("--------------------- Prediction Performance ---------------------\n")
+    print("--------------------- Prediction Statistics ---------------------\n")
     print("TP exact: ", tp_exact)
     print("TN exact: ", tn_exact)
     print("FP exact: ", fp_exact)
@@ -177,16 +177,23 @@ def report_fscore(predictions_file):
     print("FN inexact: ", fn_inexact)
     print()
 
+    print("--------------------- Prediction Performance ---------------------\n")
     precision = estimate_precision(tp_exact, fp_exact)
     recall = estimate_recall(tp_exact, fn_exact)
     fscore = estimate_fscore(precision, recall)
-    print("Exact fscore: ", "{0:.3f}".format(fscore))
+    print("Exact matching:")
+    print("f-score: {0:.3f}".format(fscore))
+    print("precision: {0:.3f}".format(precision))
+    print("recall: {0:.3f}".format(recall))
     print()
 
     precision = estimate_precision(tp_inexact, fp_inexact)
     recall = estimate_recall(tp_inexact, fn_inexact)
     fscore = estimate_fscore(precision, recall)
-    print("Inexact fscore: ", "{0:.3f}".format(fscore))
+    print("Inexact matching:")
+    print("f-score: {0:.3f}".format(fscore))
+    print("precision: {0:.3f}".format(precision))
+    print("recall: {0:.3f}".format(recall))
     print()
 
 # if __name__ == "__main__":
