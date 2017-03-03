@@ -5,6 +5,7 @@ code/coreNLP/
 code/corenlp-python/
 code/example.bitstring
 code/example.embedding
+code/minitagger/model_path/
 code/minitagger/.idea/
 code/minitagger/__pycache__/
 code/minitagger/active_output_path/

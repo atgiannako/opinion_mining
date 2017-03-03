@@ -30,7 +30,7 @@ def main(args):
 
 	if args.train:
 		# initialize feature extractor with the right feature template
-		feature_extractor = SequenceDataFeatureExtractor(args.feature_template, args.morphological_features, args.embeddings_length, args.language, args.parser_type)
+		feature_extractor = SequenceDataFeatureExtractor(args.feature_template, args.morphological_features, args.language, args.parser_type)
 		if args.feature_template == "relational":
 			feature_extractor.enable_embeddings = args.enable_embeddings
 			feature_extractor.arc_label = args.arc_label
@@ -39,7 +39,7 @@ def main(args):
 			feature_extractor.head_pos = args.head_pos
 		# load bitstring or embeddings data
 		if args.embedding_path:
-			feature_extractor.load_word_embeddings(args.embedding_path)
+			feature_extractor.load_word_embeddings(args.embedding_path, args.embedding_length)
 		if args.bitstring_path:
 			feature_extractor.load_word_bitstrings(args.bitstring_path)
 		# equip Minitagger with the appropriate feature extractor
@@ -99,7 +99,7 @@ if __name__ == "__main__":
 	argparser.add_argument("--feature_template", type=str, default="baseline",
 						   help="feature template (default: %(default)s)")
 	argparser.add_argument("--morphological_features", action="store_true", help="use morphological features")
-	argparser.add_argument("--embeddings_length", type=int, default=10, help="vector length for word embeddings")
+	argparser.add_argument("--embedding_length", type=int, default=50, help="vector length for word embeddings", choices=[50, 100, 200, 300])
 	argparser.add_argument("--embedding_path", type=str, help="path to word embeddings")
 	argparser.add_argument("--bitstring_path", type=str, help="path to word bit strings (from a hierarchy of word types)")
 	argparser.add_argument("--quiet", action="store_true", help="no messages")

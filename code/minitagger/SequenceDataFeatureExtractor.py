@@ -1,10 +1,11 @@
-from collections import Counter
+import os
 import sys
 import math
 import random
 import pickle
 import numpy as np
 from utils import *
+# from collections import Counter
 from RelationalFeatureAnalyzer import RelationalFeatureAnalyzer
 
 
@@ -13,7 +14,7 @@ class SequenceDataFeatureExtractor(object):
 	Extracts features from sequence data
 	"""
 
-	def __init__(self, feature_template, morphological_features, embeddings_length, language, parser_type):
+	def __init__(self, feature_template, morphological_features, language, parser_type):
 		# dictionary with all morphological features
 		self.morphological_feature_cache = {}
 		# feature template used for feature extraction
@@ -24,8 +25,6 @@ class SequenceDataFeatureExtractor(object):
 		self.parser_type = parser_type
 		# relational features with or without word embeddings
 		self.enable_embeddings = False
-		# length of vector for word embeddings
-		self.embeddings_length = embeddings_length
 		# path to data
 		self.data_path = None
 		# boolean flag for training
@@ -252,7 +251,7 @@ class SequenceDataFeatureExtractor(object):
 					numeric_features[self.__map_feature_str2num[raw_feature]] = raw_features[raw_feature]
 		return numeric_features
 
-	def load_word_embeddings(self, embedding_path):
+	def load_word_embeddings(self, embedding_path, embedding_length):
 		"""
 		Loads word embeddings from a file in the given path
 
@@ -262,8 +261,9 @@ class SequenceDataFeatureExtractor(object):
 
 		# load the word embeddings dictionary
 		print("Loading word embeddings...")
-		self.__word_embeddings = pickle.load(open(embedding_path, "rb"))
-
+		file_name = "word_embeddings_" + str(embedding_length) + ".p"
+		file_name = os.path.join(embedding_path, file_name)
+		self.__word_embeddings = pickle.load(open(file_name, "rb"))
 		# the token for unknown word types must be present
 		assert (self.unknown_symbol in self.__word_embeddings), "The token for unknown word types must be present in the embeddings file"
 
@@ -408,9 +408,9 @@ class SequenceDataFeatureExtractor(object):
 		offset = str(offset) if offset <= 0 else "+" + str(offset)
 		# get word embedding for the given word (all keys in the dictionary are in lower case)
 		if word.lower() in self.__word_embeddings:
-			word_embedding = self.__word_embeddings[word.lower()][:self.embeddings_length]
+			word_embedding = self.__word_embeddings[word.lower()]
 		else:
-			word_embedding = self.__word_embeddings[self.unknown_symbol][:self.embeddings_length]
+			word_embedding = self.__word_embeddings[self.unknown_symbol]
 		# normalize vector
 		word_embedding /= np.linalg.norm(word_embedding)
 		# enrich given features dict
