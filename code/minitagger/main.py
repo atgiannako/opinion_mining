@@ -48,14 +48,14 @@ def main(args):
 		if test_data is not None:
 			# Test data should be fully labeled
 			assert (not test_data.is_partially_labeled), "Test data should be fully labeled"
-		minitagger.debug = args.debug
-		if minitagger.debug:
+		minitagger.verbose = args.verbose
+		if minitagger.verbose:
 			assert args.prediction_path, "Path for prediction should be specified"
 			minitagger.prediction_path = args.prediction_path
 		# normal training, no active learning used
 		if not args.active:
 			assert args.model_path
-			minitagger.train(sequence_data, test_data)
+			minitagger.train(args.cv, sequence_data, test_data)
 			minitagger.save(args.model_path)
 		# do active learning on the training data
 		else:
@@ -121,6 +121,7 @@ if __name__ == "__main__":
 						   help="language of the data set [en, de]", required=True)
 	argparser.add_argument("--parser_type", type=str, choices=["spacy", "stanford", "syntaxnet"], help="type of parser to be used for relational feature extraction [default = spacy]", default="spacy")
 	argparser.add_argument("--enable_embeddings", action="store_true", help="enriches the relational feature space with word embeddings")
-	argparser.add_argument("--debug", action="store_true", help="produce some files for debugging")
+	argparser.add_argument("--cv", action="store_true", help="use 10-fold cross-validation")
+	argparser.add_argument("--verbose", action="store_true", help="produce some files for debugging and prints performance information")
 	parsed_args = argparser.parse_args()
 	main(parsed_args)

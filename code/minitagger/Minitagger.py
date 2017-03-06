@@ -8,9 +8,10 @@ import datetime
 import subprocess
 import collections
 import numpy as np
+from sklearn.model_selection import KFold
 
-from model_evaluation import report_fscore
 from SequenceData import SequenceData
+from model_evaluation import report_fscore
 from sklearn.metrics import confusion_matrix
 from visualize_utils import plot_confusion_matrix
 
@@ -35,7 +36,9 @@ class Minitagger(object):
 		# path to output directory for active learning
 		self.active_output_path = ""
 		# store predictions
-		self.debug = False
+		self.verbose = False
+		# flag for cross validation
+		self.cross_val = False
 		# path to output the predictions
 		self.prediction_path = ""
 		# number of seed examples for active learning
@@ -44,6 +47,9 @@ class Minitagger(object):
 		self.active_step_size = 0
 		# output actively selected examples every time this value divides their number
 		self.active_output_interval = 0
+		# lists to keep exact and inexact fscore for cross validation
+		self.exact_fscore_list = []
+		self.inexact_fscore_list = []
 
 	def equip_feature_extractor(self, feature_extractor):
 		"""
@@ -55,9 +61,10 @@ class Minitagger(object):
 
 		self.__feature_extractor = feature_extractor
 
-	def train(self, data_train, data_test):
+	def __fit_and_predict(self, data_train, data_test):
 		"""
-		Trains Minitagger on the given train data. If test data is given, it reports the accuracy of the trained model
+		Fits model on the given train data and predict on given test data
+		Reports performance if test data is given
 
 		@type data_train: SequenceData
 		@param data_train: the training data set
@@ -67,12 +74,10 @@ class Minitagger(object):
 
 		# keep the training start timestamp
 		start_time = time.time()
-		assert (self.__feature_extractor.is_training), "In order to train, is_training flag should be True"
-
 		# Extract features only for labeled instances from data_train
 		[label_list, features_list, _] = self.__feature_extractor.extract_features(data_train, False, [])
 		# print some useful information about the data
-		if not self.quiet:
+		if (not self.quiet) and (not self.cross_val):
 			print("{0} labeled words (out of {1})".format(len(label_list), data_train.num_of_words))
 			print("{0} label types".format(len(data_train.label_count)))
 			print("{0} word types".format(len(data_train.word_count)))
@@ -91,14 +96,65 @@ class Minitagger(object):
 			# how much did the training last
 			print("Training time: {0}".format(str(datetime.timedelta(seconds=num_seconds))))
 			# perform prediction on the data_test and report accuracy
-			if data_test is not None:
+			if (data_test is not None) or cv:
 				quiet_value = self.quiet
 				self.quiet = True
 				pred_labels, acc = self.predict(data_test)
 				self.quiet = quiet_value
 				print("Test set accuracy: {0:.3f}%".format(acc))
 
-	def __debug(self, data_test, pred_labels):
+	def train(self, cv, data_train, data_test):
+		"""
+		Trains Minitagger on the given train data. If test data is given, it reports the accuracy of the trained model
+
+		@type data_train: SequenceData
+		@param data_train: the training data set
+		@type data_test: SequenceData
+		@param data_test: the test data set
+		@type cv: boolean
+		@type cv: flag to enable cross validation
+		"""
+
+		# training flag should be active for training
+		assert (self.__feature_extractor.is_training), "In order to train, is_training flag should be True"
+		# update class variable
+		self.cross_val = cv
+		# check if cross validation is enabled
+		if cv:
+			# the training set contains the whole dataset when CV is used
+			# take the lists of words and labels so that data can be split into train and test set
+			data_set = data_train.sequence_pairs
+			# cast the data set into np.array (necessary for using smart indexing and KFold)
+			data_set = np.array(data_set)
+				# perform a 10-fold cross validation
+			kf = KFold(n_splits=10, random_state=6)
+			# iterate through the data set and create train and test sets
+			for fold, (train, test) in enumerate(kf.split(data_set)):
+				# create train data set
+				data_train = data_set[train].tolist()
+				# create SequenceData using data_train
+				data_train = SequenceData(data_train)
+				# create test data set
+				data_test = data_set[test].tolist()
+				# create SequenceData using the data_test
+				data_test = SequenceData(data_test)
+				print("\n----------------------------------")
+				print("10-fold Cross-Validation: fold ", fold+1)
+				print("----------------------------------\n")
+				# fit model and predict using the train and test sets respectively
+				self.__fit_and_predict(data_train, data_test)
+				# set training flag to true for the next iteration
+				self.__feature_extractor.is_training = True
+			# is_training is False after CV
+			self.__feature_extractor.is_training = False
+			print("\nCross-validation finished:")
+			print("\tExact f-scrore: {0:.3f}".format(np.mean(self.exact_fscore_list)))
+			print("\tInexact f-scrore: {0:.3f}".format(np.mean(self.inexact_fscore_list)))
+		else:
+			# in case the CV is not enabled, use the given train and test data to fit and predict
+			self.__fit_and_predict(data_train, data_test)
+
+	def __report_performance(self, data_test, pred_labels):
 		"""
 		Creates log files useful for debugging and prints a confusion matrix
 
@@ -168,18 +224,24 @@ class Minitagger(object):
 		f2.close()
 		f3.close()
 		print()
-		for label in ["B", "I", "O"]:
-			count = (np.array(true_labels) == label).sum()
-			print("Number of " + label + " in the test set:", count)
-		print()
-		# create confusion matrix
-		cm = confusion_matrix(true_labels, pred_labels)
-		print("--------------------- Confusion Matrix ---------------------\n")
-		for row in cm:
-			print(row)
-		print()
+		if not self.cross_val:
+			for label in ["B", "I", "O"]:
+				count = (np.array(true_labels) == label).sum()
+				print("Number of " + label + " in the test set:", count)
+			print()
+			# create confusion matrix
+			cm = confusion_matrix(true_labels, pred_labels)
+			print("--------------------- Confusion Matrix ---------------------\n")
+			for row in cm:
+				print(row)
+			print()
 		file_name = os.path.join(self.prediction_path, "predictions.txt")
-		report_fscore(file_name)
+		exact_fscore, inexact_fscore = report_fscore(file_name, self.cross_val)
+		print("Exact f-scrore: {0:.3f}".format(exact_fscore))
+		print("Inexact f-scrore: {0:.3f}".format(inexact_fscore))
+		if self.cross_val:
+			self.exact_fscore_list.append(exact_fscore)
+			self.inexact_fscore_list.append(inexact_fscore)
 		# classes = ["B", "I", "O"]
 		# plot_confusion_matrix(cm, classes)
 
@@ -256,8 +318,8 @@ class Minitagger(object):
 		for i, label in enumerate(pred_labels):
 			pred_labels[i] = self.__feature_extractor.get_label_string(label)
 		# create some files useful for debugging
-		if self.debug:
-			self.__debug(data_test, pred_labels)
+		if self.verbose:
+			self.__report_performance(data_test, pred_labels)
 		return pred_labels, acc
 
 	def __find_most_frequent_words(self, data_train):

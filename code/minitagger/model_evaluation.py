@@ -101,13 +101,22 @@ def estimate_exact_fscore(y_true, y_pred):
     return tp, tn, fp, fn
 
 def estimate_precision(tp, fp):
-    return float(tp) / (tp + fp)
+    try:
+        return float(tp) / (tp + fp)
+    except:
+        return 0.0
 
 def estimate_recall(tp, fn):
-    return float(tp) / (tp + fn)
+    try:
+        return float(tp) / (tp + fn)
+    except:
+        return 0.0
 
 def estimate_fscore(precision, recall):
-    return float(2 * precision * recall) / (precision + recall)
+    try:
+        return float(2 * precision * recall) / (precision + recall)
+    except:
+        return 0.0
 
 def build_data_sequence(file_name):
 
@@ -139,7 +148,7 @@ def build_data_sequence(file_name):
 
     return data_sequence
 
-def report_fscore(predictions_file):
+def report_fscore(predictions_file, quiet=False):
 
     data_sequence = build_data_sequence(predictions_file)
         
@@ -165,36 +174,40 @@ def report_fscore(predictions_file):
         fp_exact += fp
         fn_exact += fn
 
-    print("--------------------- Prediction Statistics ---------------------\n")
-    print("TP exact: ", tp_exact)
-    print("TN exact: ", tn_exact)
-    print("FP exact: ", fp_exact)
-    print("FN exact: ", fn_exact)
-    print()
-    print("TP inexact: ", tp_inexact)
-    print("TN inexact: ", tn_inexact)
-    print("FP inexact: ", fp_inexact)
-    print("FN inexact: ", fn_inexact)
-    print()
+    if not quiet:
+        print("--------------------- Prediction Statistics ---------------------\n")
+        print("TP exact: ", tp_exact)
+        print("TN exact: ", tn_exact)
+        print("FP exact: ", fp_exact)
+        print("FN exact: ", fn_exact)
+        print()
+        print("TP inexact: ", tp_inexact)
+        print("TN inexact: ", tn_inexact)
+        print("FP inexact: ", fp_inexact)
+        print("FN inexact: ", fn_inexact)
+        print()
 
-    print("--------------------- Prediction Performance ---------------------\n")
     precision = estimate_precision(tp_exact, fp_exact)
     recall = estimate_recall(tp_exact, fn_exact)
-    fscore = estimate_fscore(precision, recall)
-    print("Exact matching:")
-    print("f-score: {0:.3f}".format(fscore))
-    print("precision: {0:.3f}".format(precision))
-    print("recall: {0:.3f}".format(recall))
-    print()
+    exact_fscore = estimate_fscore(precision, recall)
+    if not quiet:
+        print("--------------------- Prediction Performance ---------------------\n")
+        print("Exact matching:")
+        print("f-score: {0:.3f}".format(exact_fscore))
+        print("precision: {0:.3f}".format(precision))
+        print("recall: {0:.3f}".format(recall))
+        print()
 
     precision = estimate_precision(tp_inexact, fp_inexact)
     recall = estimate_recall(tp_inexact, fn_inexact)
-    fscore = estimate_fscore(precision, recall)
-    print("Inexact matching:")
-    print("f-score: {0:.3f}".format(fscore))
-    print("precision: {0:.3f}".format(precision))
-    print("recall: {0:.3f}".format(recall))
-    print()
+    inexact_fscore = estimate_fscore(precision, recall)
+    if not quiet:
+        print("Inexact matching:")
+        print("f-score: {0:.3f}".format(inexact_fscore))
+        print("precision: {0:.3f}".format(precision))
+        print("recall: {0:.3f}".format(recall))
+        print()
+    return exact_fscore, inexact_fscore
 
 # if __name__ == "__main__":
 #     argparser = argparse.ArgumentParser()
