@@ -121,13 +121,15 @@ class Minitagger(object):
 		self.cross_val = cv
 		# check if cross validation is enabled
 		if cv:
+			# number of cross-validation folds
+			folds = 5
 			# the training set contains the whole dataset when CV is used
 			# take the lists of words and labels so that data can be split into train and test set
 			data_set = data_train.sequence_pairs
 			# cast the data set into np.array (necessary for using smart indexing and KFold)
 			data_set = np.array(data_set)
-				# perform a 10-fold cross validation
-			kf = KFold(n_splits=10, random_state=6)
+			# perform cross validation
+			kf = KFold(n_splits=folds, random_state=6)
 			# iterate through the data set and create train and test sets
 			for fold, (train, test) in enumerate(kf.split(data_set)):
 				# create train data set
@@ -139,7 +141,7 @@ class Minitagger(object):
 				# create SequenceData using the data_test
 				data_test = SequenceData(data_test)
 				print("\n----------------------------------")
-				print("10-fold Cross-Validation: fold ", fold+1)
+				print(str(folds) + "-fold Cross-Validation: fold ", fold+1)
 				print("----------------------------------\n")
 				# fit model and predict using the train and test sets respectively
 				self.__fit_and_predict(data_train, data_test)

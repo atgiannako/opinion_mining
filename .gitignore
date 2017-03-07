@@ -1,3 +1,6 @@
+*.a
+*.o
+code/minitagger/predictions/*
 *.DS_Store
 .ipynb_checkpoints/
 RelationalFeatureAnalyzer_backup.py

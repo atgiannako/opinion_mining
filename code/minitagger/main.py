@@ -26,17 +26,18 @@ def main(args):
 		assert args.embedding_path, "Embeddings path should be specified when embeddings are enabled"
 
 	if args.feature_template == "relational":
-		assert (args.arc_label or args.arc_head or args.pos_tag or args.head_pos), "Cannot create relational features"
+		assert (args.arc_label or args.arc_head or args.pos_tag or args.head_pos or args.pos_window), "Cannot create relational features"
 
 	if args.train:
 		# initialize feature extractor with the right feature template
-		feature_extractor = SequenceDataFeatureExtractor(args.feature_template, args.morphological_features, args.language, args.parser_type)
+		feature_extractor = SequenceDataFeatureExtractor(args.feature_template, args.morphological_features, args.name_lists, args.language, args.parser_type)
 		if args.feature_template == "relational":
 			feature_extractor.enable_embeddings = args.enable_embeddings
 			feature_extractor.arc_label = args.arc_label
 			feature_extractor.arc_head = args.arc_head
 			feature_extractor.pos_tag = args.pos_tag
 			feature_extractor.head_pos = args.head_pos
+			feature_extractor.pos_window = args.pos_window
 		# load bitstring or embeddings data
 		if args.embedding_path:
 			feature_extractor.load_word_embeddings(args.embedding_path, args.embedding_length)
@@ -117,10 +118,12 @@ if __name__ == "__main__":
 	argparser.add_argument("--arc_head", action="store_true", help="use the arc head in relational features")
 	argparser.add_argument("--pos_tag", action="store_true", help="use the POS tag in relational features")
 	argparser.add_argument("--head_pos", action="store_true", help="use the POS tag of the head in relational features")
+	argparser.add_argument("--pos_window", action="store_true", help="take POS tag of previous and next word into account")
 	argparser.add_argument("--language", type=str, choices=["en", "de"],
 						   help="language of the data set [en, de]", required=True)
 	argparser.add_argument("--parser_type", type=str, choices=["spacy", "stanford", "syntaxnet"], help="type of parser to be used for relational feature extraction [default = spacy]", default="spacy")
 	argparser.add_argument("--enable_embeddings", action="store_true", help="enriches the relational feature space with word embeddings")
+	argparser.add_argument("--name_lists", action="store_true", help="uses name lists obtained from the training data set")
 	argparser.add_argument("--cv", action="store_true", help="use 10-fold cross-validation")
 	argparser.add_argument("--verbose", action="store_true", help="produce some files for debugging and prints performance information")
 	parsed_args = argparser.parse_args()

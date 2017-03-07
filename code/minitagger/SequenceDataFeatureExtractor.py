@@ -14,7 +14,7 @@ class SequenceDataFeatureExtractor(object):
 	Extracts features from sequence data
 	"""
 
-	def __init__(self, feature_template, morphological_features, language, parser_type):
+	def __init__(self, feature_template, morphological_features, name_lists, language, parser_type):
 		# dictionary with all morphological features
 		self.morphological_feature_cache = {}
 		# feature template used for feature extraction
@@ -37,8 +37,12 @@ class SequenceDataFeatureExtractor(object):
 		self.pos_tag = False
 		# POS of the head
 		self.head_pos = False
+		# sequence of POS tags in a window around the word
+		self.pos_window = False
 		# flag to include morphological features or not
 		self.include_morphological_features = morphological_features
+		# use name lists
+		self.use_name_lists = name_lists
 		# dictionary that maps feature string to number
 		self.__map_feature_str2num = {}
 		# dictionary that maps feature number to string
@@ -57,6 +61,10 @@ class SequenceDataFeatureExtractor(object):
 		# initialize relational features analyzer
 		if self.feature_template == "relational":
 			self.relational_feature_analyzer = RelationalFeatureAnalyzer(self.parser_type, self.language)
+		# load name lists of necessary
+		# if self.use_name_lists:
+		# 	self.targets = pickle.load(open("../../data/targets.p", "rb"))
+		# 	self.word_freqs = pickle.load(open("../../data/word_freqs.p", "rb"))
 
 	def num_feature_types(self):
 		"""
@@ -343,7 +351,7 @@ class SequenceDataFeatureExtractor(object):
 			for length in range(1, 5):
 				features["prefix{0}({1})={2}".format(length, relative_position, get_prefix(word, length))] = 1
 				features["suffix{0}({1})={2}".format(length, relative_position, get_suffix(word, length))] = 1
-			# check if all chars are nonalphanumeric
+			# check if all chars are non-alphanumeric
 			features["is_all_nonalphanumeric({0})={1}".format(relative_position, is_all_nonalphanumeric(word))] = 1
 			# check if word can be converted to float, i.e. word is a number
 			features["is_float({0})={1}".format(relative_position, is_float(word))] = 1
@@ -386,6 +394,17 @@ class SequenceDataFeatureExtractor(object):
 		features["word(-2)={0}".format(word_left2)] = 1
 		features["word(+1)={0}".format(word_right1)] = 1
 		features["word(+2)={0}".format(word_right2)] = 1
+
+		# # check if name lists should be taken into account
+		# if self.use_name_lists:
+		# 	# check if word in present in the targets
+		# 	flag = (word.lower() in self.targets)
+		# 	# create respective features
+		# 	features["in_target={0}".format(flag)] = 1
+		# 	# check if word is present in the target tokens
+		# 	flag = (word.lower() in self.word_freqs)		
+		# 	# create respective feature	
+		# 	features["in_freq_words={0}".format(flag)] = 1
 		return features
 
 	def __get_word_embeddings(self, word_sequence, position, offset, features):
@@ -529,6 +548,24 @@ class SequenceDataFeatureExtractor(object):
 			# get pos of tag
 			head_pos = relational_analysis[position][3]
 			features["head_pos={0}".format(head_pos)] = 1
+		if self.pos_window:
+			# get the POS tags from the previous and the next word
+			indexes = np.array(range(-1,2)) + position
+			pos_sequence = []
+			for p in indexes:
+				if p < 0:
+					# out of bounds
+					tag = "BEGIN"
+				elif p >= len(relational_analysis):
+					# out of bounds
+					tag = "END"
+				else:
+					# get POS tag of adjacent word
+					tag = relational_analysis[p][2]
+				pos_sequence.append(tag)
+			# create features from the adjacent POS tags
+			features["pos_at(-1)={0}".format(pos_sequence[0])] = 1
+			features["pos_at(+1)={0}".format(pos_sequence[2])] = 1
 		
 		# relational features enriched with word embeddings
 		if self.enable_embeddings:
