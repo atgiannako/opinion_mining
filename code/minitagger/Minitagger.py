@@ -9,6 +9,7 @@ import subprocess
 import collections
 import numpy as np
 from sklearn.model_selection import KFold
+from name_lists_handler import build_name_lists
 
 from SequenceData import SequenceData
 from model_evaluation import report_fscore
@@ -132,6 +133,11 @@ class Minitagger(object):
 			kf = KFold(n_splits=folds, random_state=6)
 			# iterate through the data set and create train and test sets
 			for fold, (train, test) in enumerate(kf.split(data_set)):
+				# build two lists with targets and frequent words from the training set
+				targets, frequent_words = build_name_lists(train)
+				# equip feature extractor with target list and frequent words
+				self.__feature_extractor.targets = targets
+				self.__feature_extractor.frequent_words = frequent_words
 				# create train data set
 				data_train = data_set[train].tolist()
 				# create SequenceData using data_train
@@ -153,6 +159,11 @@ class Minitagger(object):
 			print("\tExact f-scrore: {0:.3f}".format(np.mean(self.exact_fscore_list)))
 			print("\tInexact f-scrore: {0:.3f}".format(np.mean(self.inexact_fscore_list)))
 		else:
+			# build two lists with targets and frequent words from the training set
+			targets, frequent_words = build_name_lists(keep_all=True)
+			# equip feature extractor with target list and frequent words
+			self.__feature_extractor.targets = targets
+			self.__feature_extractor.frequent_words = frequent_words
 			# in case the CV is not enabled, use the given train and test data to fit and predict
 			self.__fit_and_predict(data_train, data_test)
 

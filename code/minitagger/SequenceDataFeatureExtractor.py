@@ -61,10 +61,9 @@ class SequenceDataFeatureExtractor(object):
 		# initialize relational features analyzer
 		if self.feature_template == "relational":
 			self.relational_feature_analyzer = RelationalFeatureAnalyzer(self.parser_type, self.language)
-		# load name lists of necessary
-		# if self.use_name_lists:
-		# 	self.targets = pickle.load(open("../../data/targets.p", "rb"))
-		# 	self.word_freqs = pickle.load(open("../../data/word_freqs.p", "rb"))
+		# initialize name lists
+		self.targets = None
+		self.frequent_words = None
 
 	def num_feature_types(self):
 		"""
@@ -396,15 +395,17 @@ class SequenceDataFeatureExtractor(object):
 		features["word(+2)={0}".format(word_right2)] = 1
 
 		# # check if name lists should be taken into account
-		# if self.use_name_lists:
-		# 	# check if word in present in the targets
-		# 	flag = (word.lower() in self.targets)
-		# 	# create respective features
-		# 	features["in_target={0}".format(flag)] = 1
-		# 	# check if word is present in the target tokens
-		# 	flag = (word.lower() in self.word_freqs)		
-		# 	# create respective feature	
-		# 	features["in_freq_words={0}".format(flag)] = 1
+		if self.use_name_lists:
+			assert self.targets is not None, "List of targets should not be empty"
+			assert self.frequent_words is not None, "List of frequent words should not be empty"
+			# check if word in present in the targets
+			flag = (word.lower() in self.targets)
+			# create respective features
+			features["in_target={0}".format(flag)] = 1
+			# check if word is present in the target tokens
+			flag = (word.lower() in self.frequent_words)
+			# create respective feature
+			features["in_freq_words={0}".format(flag)] = 1
 		return features
 
 	def __get_word_embeddings(self, word_sequence, position, offset, features):
