@@ -1,3 +1,4 @@
+import os
 import argparse
 
 
@@ -148,6 +149,14 @@ def build_data_sequence(file_name):
 
     return data_sequence
 
+def fscore_conll(predictions_file):
+	command = "perl conll.pl -r < " + predictions_file
+	os.system(command)
+	with open("conll_fscore.txt", "r") as myfile:
+		score=myfile.read().replace('\n', '')
+	return float(score)
+
+
 def report_fscore(predictions_file, quiet=False):
 
     data_sequence = build_data_sequence(predictions_file)
@@ -207,7 +216,8 @@ def report_fscore(predictions_file, quiet=False):
         print("precision: {0:.3f}".format(precision))
         print("recall: {0:.3f}".format(recall))
         print()
-    return exact_fscore, inexact_fscore
+    conll = fscore_conll(predictions_file)
+    return exact_fscore, inexact_fscore, conll
 
 # if __name__ == "__main__":
 #     argparser = argparse.ArgumentParser()

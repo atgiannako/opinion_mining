@@ -48,9 +48,10 @@ class Minitagger(object):
 		self.active_step_size = 0
 		# output actively selected examples every time this value divides their number
 		self.active_output_interval = 0
-		# lists to keep exact and inexact fscore for cross validation
+		# lists to keep exact, inexact and CONLL f-score for cross validation
 		self.exact_fscore_list = []
 		self.inexact_fscore_list = []
+		self.conll_fscore_list = []
 
 	def equip_feature_extractor(self, feature_extractor):
 		"""
@@ -158,6 +159,12 @@ class Minitagger(object):
 			print("\nCross-validation finished:")
 			print("\tExact f-scrore: {0:.3f}".format(np.mean(self.exact_fscore_list)))
 			print("\tInexact f-scrore: {0:.3f}".format(np.mean(self.inexact_fscore_list)))
+			print("\tCONLL f-scrore: {0:.3f}".format(np.mean(self.conll_fscore_list)))
+			# log performance
+			s = "{0:.3f}".format(np.mean(self.exact_fscore_list)) + "\t" + "{0:.3f}".format(np.mean(self.inexact_fscore_list)) + "\t" + "{0:.3f}".format(np.mean(self.conll_fscore_list)) + "\n"
+			logger = open("results.txt", "a")
+			logger.write(s)
+			logger.close()
 		else:
 			# build two lists with targets and frequent words from the training set
 			targets, frequent_words = build_name_lists(keep_all=True)
@@ -249,12 +256,14 @@ class Minitagger(object):
 				print(row)
 			print()
 		file_name = os.path.join(self.prediction_path, "predictions.txt")
-		exact_fscore, inexact_fscore = report_fscore(file_name, self.cross_val)
+		exact_fscore, inexact_fscore, conll_fscore = report_fscore(file_name, self.cross_val)
 		print("Exact f-scrore: {0:.3f}".format(exact_fscore))
 		print("Inexact f-scrore: {0:.3f}".format(inexact_fscore))
+		print("CONLL f-scrore: {0:.3f}".format(conll_fscore))
 		if self.cross_val:
 			self.exact_fscore_list.append(exact_fscore)
 			self.inexact_fscore_list.append(inexact_fscore)
+			self.conll_fscore_list.append(conll_fscore)
 		# classes = ["B", "I", "O"]
 		# plot_confusion_matrix(cm, classes)
 
