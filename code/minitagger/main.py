@@ -19,6 +19,7 @@ def main(args):
 
 	# train or use a tagger model on the given data.
 	minitagger = Minitagger()
+	minitagger.classifier = args.classifier
 	minitagger.quiet = args.quiet
 	sequence_data = SequenceData(args.data_path)
 
@@ -30,7 +31,7 @@ def main(args):
 
 	if args.train:
 		# initialize feature extractor with the right feature template
-		feature_extractor = SequenceDataFeatureExtractor(args.feature_template, args.morphological_features, args.name_lists, args.language, args.parser_type)
+		feature_extractor = SequenceDataFeatureExtractor(args.feature_template, args.morphological_features, args.name_lists, args.language, args.parser_type, args.classifier)
 		if args.feature_template == "relational":
 			feature_extractor.enable_embeddings = args.enable_embeddings
 			feature_extractor.arc_label = args.arc_label
@@ -61,6 +62,7 @@ def main(args):
 		# do active learning on the training data
 		else:
 			assert (args.active_output_path), "Active output path should not be empty"
+			assert (args.classifier == "svm"), "Classifier should be SVM for active learning"
 			# assign the right parameters to minitagger
 			minitagger.active_output_path = args.active_output_path
 			minitagger.active_seed_size = args.active_seed_size
@@ -126,5 +128,6 @@ if __name__ == "__main__":
 	argparser.add_argument("--name_lists", action="store_true", help="uses name lists obtained from the training data set")
 	argparser.add_argument("--cv", action="store_true", help="use 10-fold cross-validation")
 	argparser.add_argument("--verbose", action="store_true", help="produce some files for debugging and prints performance information")
+	argparser.add_argument("--classifier", type=str, help="type of classifier to be used", choices=["svm", "crf"], required=True)
 	parsed_args = argparser.parse_args()
 	main(parsed_args)

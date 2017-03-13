@@ -20,6 +20,7 @@ LIBLINEAR_PATH = os.path.join(os.path.dirname(__file__), "liblinear-1.96/python"
 sys.path.append(os.path.abspath(LIBLINEAR_PATH))
 import liblinearutil
 
+import sklearn_crfsuite
 
 class Minitagger(object):
 	"""
@@ -32,6 +33,8 @@ class Minitagger(object):
 		self.__feature_extractor = None
 		# it stores a trained liblinearutil
 		self.__liblinear_model = None
+		# CRF classifier
+		self.__crf_classifier = None
 		# flag in order to print more/less log messages
 		self.quiet = False
 		# path to output directory for active learning
@@ -48,6 +51,8 @@ class Minitagger(object):
 		self.active_step_size = 0
 		# output actively selected examples every time this value divides their number
 		self.active_output_interval = 0
+		# classifier
+		self.classifier = None
 		# lists to keep exact, inexact and CONLL f-score for cross validation
 		self.exact_fscore_list = []
 		self.inexact_fscore_list = []
@@ -63,9 +68,9 @@ class Minitagger(object):
 
 		self.__feature_extractor = feature_extractor
 
-	def __fit_and_predict(self, data_train, data_test):
+	def __fit_and_predict_crf(self, data_train, data_test):
 		"""
-		Fits model on the given train data and predict on given test data
+		Fits CRF model on the given train data and predict on given test data
 		Reports performance if test data is given
 
 		@type data_train: SequenceData
@@ -77,7 +82,110 @@ class Minitagger(object):
 		# keep the training start timestamp
 		start_time = time.time()
 		# Extract features only for labeled instances from data_train
-		[label_list, features_list, _] = self.__feature_extractor.extract_features(data_train, False, [])
+		[label_list, features_list, _] = self.__feature_extractor.extract_features(data_train, False, [], self.classifier)
+		# print some useful information about the data
+		if (not self.quiet) and (not self.cross_val):
+			print("{0} labeled words (out of {1})".format(len(label_list), data_train.num_of_words))
+			print("{0} label types".format(len(data_train.label_count)))
+			print("{0} word types".format(len(data_train.word_count)))
+			print("\"{0}\" feature template".format(self.__feature_extractor.feature_template))
+			print("{0} feature types".format(self.__feature_extractor.num_feature_types()))
+		# define problem to be trained using the parameters received from the feature_extractor
+		self.__crf_classifier.fit(features_list, label_list)
+		self.__feature_extractor.is_training = False
+		[label_list, features_list, _] = self.__feature_extractor.extract_features(data_test, False, [], self.classifier)
+		# make predictions using the CRF classifier
+		pred_labels = self.__crf_classifier.predict(features_list)
+		if self.verbose:
+			# report performance achieved using the CRF classifier
+			self.__report_performance(data_test, pred_labels)
+
+	def __report_performance(self, data_test, pred_labels):
+		"""
+		Creates log files useful for debugging and prints a confusion matrix
+
+		@type data_test: SequenceData object
+		@param data_test: contains the testing data set
+		@type pred_labels: list
+		@param pred_labels: contains the prediction labels as they result from the classifier
+		"""
+
+		# file to print all predictions
+		file_name = os.path.join(self.prediction_path, "predictions.txt")
+		f1 = open(file_name, "w")
+		# file to print only sentences that contain at least one wrong label after classification
+		file_name = os.path.join(self.prediction_path, "predictions_wrong.txt")
+		f2 = open(file_name, "w")
+		# file to print only sentences whose labels are predicted 100% correctly
+		file_name = os.path.join(self.prediction_path, "predictions_correct.txt")
+		f3 = open(file_name, "w")
+		sequence_number = -1
+		for words, labels in data_test.sequence_pairs:
+			sequence_number += 1
+			for i in range(len(words)):
+				# create line to print in the file
+				line = words[i] + " " + labels[i] + " " + pred_labels[sequence_number][i] + "\n"
+				# write to file
+				f1.write(line)
+			# separate sentences with empty lines
+			f1.write("\n")
+			if labels != pred_labels[sequence_number]:
+				for i in range(len(words)):
+					# create line to print in the file
+					line = words[i] + " " + labels[i] + " " + pred_labels[sequence_number][i] + "\n"
+					# write to file
+					f2.write(line)
+				# separate sentences with empty lines
+				f2.write("\n")
+			if labels == pred_labels[sequence_number]:
+				for i in range(len(words)):
+					# create line to print in the file
+					line = words[i] + " " + labels[i] + " " + pred_labels[sequence_number][i] + "\n"
+					# write to file
+					f3.write(line)
+				# separate sentences with empty lines
+				f3.write("\n")
+		f1.close()
+		f2.close()
+		f3.close()
+		# print()
+		# if not self.cross_val:
+		# 	for label in ["B", "I", "O"]:
+		# 		count = (np.array(true_labels) == label).sum()
+		# 		print("Number of " + label + " in the test set:", count)
+		# 	print()
+		# 	# create confusion matrix
+		# 	cm = confusion_matrix(true_labels, pred_labels)
+		# 	print("--------------------- Confusion Matrix ---------------------\n")
+		# 	for row in cm:
+		# 		print(row)
+		# 	print()
+		file_name = os.path.join(self.prediction_path, "predictions.txt")
+		exact_fscore, inexact_fscore, conll_fscore = report_fscore(file_name, self.cross_val)
+		# report f-scores
+		print("Exact f-scrore: {0:.3f}".format(exact_fscore))
+		print("Inexact f-scrore: {0:.3f}".format(inexact_fscore))
+		print("CONLL f-scrore: {0:.3f}".format(conll_fscore))
+		if self.cross_val:
+			self.exact_fscore_list.append(exact_fscore)
+			self.inexact_fscore_list.append(inexact_fscore)
+			self.conll_fscore_list.append(conll_fscore)
+
+	def __fit_and_predict_svm(self, data_train, data_test):
+		"""
+		Fits SVM model on the given train data and predict on given test data
+		Reports performance if test data is given
+
+		@type data_train: SequenceData
+		@param data_train: the training data set
+		@type data_test: SequenceData
+		@param data_test: the test data set
+		"""
+
+		# keep the training start timestamp
+		start_time = time.time()
+		# Extract features only for labeled instances from data_train
+		[label_list, features_list, _] = self.__feature_extractor.extract_features(data_train, False, [], self.classifier)
 		# print some useful information about the data
 		if (not self.quiet) and (not self.cross_val):
 			print("{0} labeled words (out of {1})".format(len(label_list), data_train.num_of_words))
@@ -91,7 +199,6 @@ class Minitagger(object):
 		self.__liblinear_model = liblinearutil.train(problem, liblinearutil.parameter("-q"))
 		# training is done, set is_training to False, so that prediction can be done
 		self.__feature_extractor.is_training = False
-
 		# print some useful information
 		if not self.quiet:
 			num_seconds = int(math.ceil(time.time() - start_time))
@@ -130,6 +237,9 @@ class Minitagger(object):
 			data_set = data_train.sequence_pairs
 			# cast the data set into np.array (necessary for using smart indexing and KFold)
 			data_set = np.array(data_set)
+			# initialize CRF object if CRF is used
+			if self.classifier == "crf":
+				self.__crf_classifier = sklearn_crfsuite.CRF()
 			# perform cross validation
 			kf = KFold(n_splits=folds, random_state=6)
 			# iterate through the data set and create train and test sets
@@ -150,8 +260,11 @@ class Minitagger(object):
 				print("\n----------------------------------")
 				print(str(folds) + "-fold Cross-Validation: fold ", fold+1)
 				print("----------------------------------\n")
-				# fit model and predict using the train and test sets respectively
-				self.__fit_and_predict(data_train, data_test)
+				# fit right model and predict using the train and test sets respectively
+				if self.classifier == "svm":
+					self.__fit_and_predict_svm(data_train, data_test)
+				if self.classifier == "crf":
+					self.__fit_and_predict_crf(data_train, data_test)
 				# set training flag to true for the next iteration
 				self.__feature_extractor.is_training = True
 			# is_training is False after CV
@@ -160,11 +273,13 @@ class Minitagger(object):
 			print("\tExact f-scrore: {0:.3f}".format(np.mean(self.exact_fscore_list)))
 			print("\tInexact f-scrore: {0:.3f}".format(np.mean(self.inexact_fscore_list)))
 			print("\tCONLL f-scrore: {0:.3f}".format(np.mean(self.conll_fscore_list)))
+			print()
 			# log performance
 			s = "{0:.3f}".format(np.mean(self.exact_fscore_list)) + "\t" + "{0:.3f}".format(np.mean(self.inexact_fscore_list)) + "\t" + "{0:.3f}".format(np.mean(self.conll_fscore_list)) + "\n"
-			logger = open("results.txt", "a")
+			logger = open("results.csv", "a")
 			logger.write(s)
 			logger.close()
+			sys.exit()
 		else:
 			# build two lists with targets and frequent words from the training set
 			targets, frequent_words = build_name_lists(keep_all=True)
@@ -172,100 +287,10 @@ class Minitagger(object):
 			self.__feature_extractor.targets = targets
 			self.__feature_extractor.frequent_words = frequent_words
 			# in case the CV is not enabled, use the given train and test data to fit and predict
-			self.__fit_and_predict(data_train, data_test)
-
-	def __report_performance(self, data_test, pred_labels):
-		"""
-		Creates log files useful for debugging and prints a confusion matrix
-
-		@type data_test: SequenceData object
-		@param data_test: contains the testing data set
-		@type pred_labels: list
-		@param pred_labels: contains the prediction labels as they result from the classifier
-		"""
-
-		# file to print all predictions
-		file_name = os.path.join(self.prediction_path, "predictions.txt")
-		f1 = open(file_name, "w")
-		# file to print only sentences that contain at least one wrong label after classification
-		file_name = os.path.join(self.prediction_path, "predictions_wrong.txt")
-		f2 = open(file_name, "w")
-		# file to print only sentences whose labels are predicted 100% correctly
-		file_name = os.path.join(self.prediction_path, "predictions_correct.txt")
-		f3 = open(file_name, "w")
-		# index for prediction label
-		pred_idx = 0
-		# list to store all true labels
-		true_labels = []
-		# iterate through the test set
-		# sequence id
-		sequence_number = -1
-		for words, labels in data_test.sequence_pairs:
-			sequence_number += 1
-			# prediction sequence for each sentence
-			pred_sequence = []
-			# true label sequence for each sentence
-			label_sequence = []
-			# word sequence for each sentence
-			word_sequence = []
-			for i in range(len(words)):
-				# append word in the word sequence
-				word_sequence.append(words[i])
-				# append label to the prediction sequence
-				pred_sequence.append(pred_labels[pred_idx])
-				# sequence labels
-				label_sequence.append(labels[i])
-				# append label to the list of true labels
-				true_labels.append(labels[i])
-				# create line to print in the file
-				line = words[i] + " " + labels[i] + " " + pred_labels[pred_idx] + "\n" 
-				# write to file
-				f1.write(line)
-				pred_idx += 1
-			# separate sentences with empty lines
-			f1.write("\n")
-			# check if classification error occurred
-			if label_sequence != pred_sequence:
-				for i in range(len(label_sequence)):
-					# create line to print to file
-					line = word_sequence[i] + " " + label_sequence[i] + " " + pred_sequence[i] + "\n"
-					f2.write(line)
-				# separate sentences with empty lines
-				f2.write("\n")
+			if self.classifier == "svm":
+				self.__fit_and_predict_svm(data_train, data_test)
 			else:
-				for i in range(len(label_sequence)):
-					# create line to print to file
-					line = word_sequence[i] + " " + label_sequence[i] + " " + pred_sequence[i] + "\n"
-					f3.write(line)
-				# separate sentences with empty lines	
-				f3.write("\n")
-		# close files
-		f1.close()
-		f2.close()
-		f3.close()
-		print()
-		if not self.cross_val:
-			for label in ["B", "I", "O"]:
-				count = (np.array(true_labels) == label).sum()
-				print("Number of " + label + " in the test set:", count)
-			print()
-			# create confusion matrix
-			cm = confusion_matrix(true_labels, pred_labels)
-			print("--------------------- Confusion Matrix ---------------------\n")
-			for row in cm:
-				print(row)
-			print()
-		file_name = os.path.join(self.prediction_path, "predictions.txt")
-		exact_fscore, inexact_fscore, conll_fscore = report_fscore(file_name, self.cross_val)
-		print("Exact f-scrore: {0:.3f}".format(exact_fscore))
-		print("Inexact f-scrore: {0:.3f}".format(inexact_fscore))
-		print("CONLL f-scrore: {0:.3f}".format(conll_fscore))
-		if self.cross_val:
-			self.exact_fscore_list.append(exact_fscore)
-			self.inexact_fscore_list.append(inexact_fscore)
-			self.conll_fscore_list.append(conll_fscore)
-		# classes = ["B", "I", "O"]
-		# plot_confusion_matrix(cm, classes)
+				self.__fit_and_predict_crf(data_train, data_test)
 
 	def save(self, model_path):
 		"""
@@ -322,7 +347,7 @@ class Minitagger(object):
 		assert (not self.__feature_extractor.is_training), "In order to predict, is_training should be False"
 
 		# Extract features on all instances (labeled or unlabeled) of the test set
-		[label_list, features_list, _] = self.__feature_extractor.extract_features(data_test, True, [])
+		[label_list, features_list, _] = self.__feature_extractor.extract_features(data_test, True, [], self.classifier)
 		# pass them to liblinearutil for prediction
 		pred_labels, (acc, _, _), _ = liblinearutil.predict(label_list, features_list, self.__liblinear_model, "-q")
 		# print some useful information
@@ -341,8 +366,38 @@ class Minitagger(object):
 			pred_labels[i] = self.__feature_extractor.get_label_string(label)
 		# create some files useful for debugging
 		if self.verbose:
-			self.__report_performance(data_test, pred_labels)
+			# liblinear returns a list of tags
+			# this list is parsed in order to create a list of lists of labels (each sublist contains the labels of a sentence)
+			parsed_labels = self.__parse_predictions(data_test, pred_labels)
+			# report performance
+			self.__report_performance(data_test, parsed_labels)
 		return pred_labels, acc
+
+	def __parse_predictions(self, data_test, pred_labels):
+		"""
+		Parses the prediction labels of the liblinear
+
+		@type data_test: SequenceData
+		@param data_test: the test data set
+		@type pred_labels: list
+		@param data_test: list of the predicted labels
+		@return: a list of lists of predicted labels
+		each sublist contains labels for each sentence
+		"""
+
+		# list of parsed predictions
+		predictions = []
+		index = -1
+		# iterate through the test data and parse predictions
+		for words, labels in data_test.sequence_pairs:
+			y_pred = []
+			for word in words:
+				index += 1
+				# append label for each token
+				y_pred.append(pred_labels[index])
+			# append list of labels for each sentence
+			predictions.append(y_pred)
+		return predictions
 
 	def __find_most_frequent_words(self, data_train):
 		"""
@@ -435,7 +490,7 @@ class Minitagger(object):
 		quiet_value = self.quiet
 		self.quiet = True
 		# no need for test set here.
-		self.train(data_selected, None)
+		self.train(False, data_selected, None)
 		self.quiet = quiet_value
 
 	def __interval_report(self, data_selected, data_test, logfile):
@@ -530,7 +585,7 @@ class Minitagger(object):
 		while len(locations) < data_train.num_labeled_words:
 			# extract features for the remaining (i.e. not in the skip list) labeled examples
 			[label_list, features_list, location_list] = self.__feature_extractor.extract_features(
-				data_train, False, __skip_extraction)
+				data_train, False, __skip_extraction, self.classifier)
 			# make predictions on the remaining (i.e. not in the skip list) labeled examples
 			_, _, scores_list = liblinearutil.predict(label_list, features_list, self.__liblinear_model, "-q")
 

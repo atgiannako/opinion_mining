@@ -14,7 +14,7 @@ class SequenceDataFeatureExtractor(object):
 	Extracts features from sequence data
 	"""
 
-	def __init__(self, feature_template, morphological_features, name_lists, language, parser_type):
+	def __init__(self, feature_template, morphological_features, name_lists, language, parser_type, classifier):
 		# dictionary with all morphological features
 		self.morphological_feature_cache = {}
 		# feature template used for feature extraction
@@ -64,6 +64,8 @@ class SequenceDataFeatureExtractor(object):
 		# initialize name lists
 		self.targets = None
 		self.frequent_words = None
+		# classifier
+		self.classifier = classifier
 
 	def num_feature_types(self):
 		"""
@@ -122,7 +124,7 @@ class SequenceDataFeatureExtractor(object):
 		assert (label_string in self.__map_label_str2num), "Label string not in labelString-to-ID dictionary"
 		return self.__map_label_str2num[label_string]
 
-	def extract_features(self, sequence_data, extract_all, skip_list):
+	def __extract_features_svm(self, sequence_data, extract_all, skip_list):
 		"""
 		Extracts features from the given sequence data.
 
@@ -169,6 +171,72 @@ class SequenceDataFeatureExtractor(object):
 					features_list.append(self.__get_features(word_sequence, position, relational_analysis))
 					# append location in locations list
 					location_list.append((sequence_num, position))
+		return label_list, features_list, location_list
+
+	def __extract_features_crf(self, sequence_data):
+		"""
+		Extracts features from the given sequence data.
+
+		@type sequence_data: SequenceData object
+		@param sequence_data: contains all word sequences and label sequences
+		@return: list of labels, list of features, list of locations (i.e. position in the corpus where each label is
+		found)
+		"""
+
+		# list for labels
+		label_list = []
+		# list for features
+		features_list = []
+		# list for locations
+		location_list = []
+		# extract data path from sequence_data
+		self.data_path = sequence_data.data_path
+		# iterate through all sequences (=sentences) and all words in each sentence
+
+		for sequence_num, (word_sequence, label_sequence) in enumerate(sequence_data.sequence_pairs):
+			# check if relational features are used
+			# if so, build relational info for the current word_sequence
+			if self.feature_template == "relational":
+				# get relational info for the current word_sequence
+				relational_analysis = self.relational_feature_analyzer.analyze_relational_features(word_sequence)
+			else:
+				# relational info is not used
+				relational_analysis = None
+
+			sequence_label_list = []
+			sequence_feature_list = []
+			for position, label in enumerate(label_sequence):
+				assert (label is not None), "CRF model: all instances should be labeled"
+				# append label id to label list
+				sequence_label_list.append(label)
+				# append feature id in features list
+				sequence_feature_list.append(self.__get_features(word_sequence, position, relational_analysis))
+				# append location in locations list
+				location_list.append((sequence_num, position))
+			label_list.append(sequence_label_list)
+			features_list.append(sequence_feature_list)
+		return label_list, features_list, location_list
+
+	def extract_features(self, sequence_data, extract_all, skip_list, model_type):
+		"""
+		Extracts features from the given sequence data.
+
+		@type sequence_data: SequenceData object
+		@param sequence_data: contains all word sequences and label sequences
+		@type extract_all: bool
+		@param extract_all: specifies if features should be extracted for all words or not.  Unless specified
+		extract_all=True, it extracts features only from labeled instances
+		@type skip_list: list
+		@param skip_list: skips extracting features from examples specified by skip_list.
+		This is used for active learning. (Pass [] to not skip any example.)
+		@return: list of labels, list of features, list of locations (i.e. position in the corpus where each label is
+		found)
+		"""
+
+		if model_type == "svm":
+			label_list, features_list, location_list = self.__extract_features_svm(sequence_data, extract_all, skip_list)
+		if model_type == "crf":
+			label_list, features_list, location_list = self.__extract_features_crf(sequence_data)
 		return label_list, features_list, location_list
 
 	def __get_label(self, label):
@@ -226,8 +294,11 @@ class SequenceDataFeatureExtractor(object):
 		else:
 			raise Exception("Unsupported feature template {0}".format(self.feature_template))
 		# map extracted raw features to numeric
-		numeric_features = self.__map_raw_to_numeric_features(raw_features)
-		return numeric_features
+		if self.classifier == "svm":
+			numeric_features = self.__map_raw_to_numeric_features(raw_features)
+			return numeric_features
+		if self.classifier == "crf":
+			return raw_features
 
 	def __map_raw_to_numeric_features(self, raw_features):
 		"""
