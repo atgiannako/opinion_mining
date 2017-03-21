@@ -368,7 +368,7 @@ class Minitagger(object):
 			data_set = np.array(data_set)
 			# initialize CRF object if CRF is used
 			if self.classifier == "crf":
-				self.__crf_classifier = sklearn_crfsuite.CRF(algorithm="lbfgs", all_possible_states=True, all_possible_transitions=True, c1=0.1, c3=0.1)
+				self.__crf_classifier = sklearn_crfsuite.CRF(algorithm="lbfgs", all_possible_states=True, all_possible_transitions=True, c1=0.1, c2=0.1)
 			# perform cross validation
 			kf = KFold(n_splits=folds, random_state=6)
 			# iterate through the data set and create train and test sets
@@ -423,7 +423,7 @@ class Minitagger(object):
 			if self.classifier == "svm":
 				self.__fit_and_predict_svm(data_train, data_test)
 			if self.classifier == "crf":
-				self.__crf_classifier = sklearn_crfsuite.CRF(algorithm="lbfgs", all_possible_states=True, all_possible_transitions=True, c1=0.1, c3=0.1)
+				self.__crf_classifier = sklearn_crfsuite.CRF(algorithm="lbfgs", all_possible_states=True, all_possible_transitions=True, c1=0.1, c2=0.1)
 				self.__fit_and_predict_crf(data_train, data_test)
 			if self.classifier == "nn":
 				self.__fit_and_predict_nn(data_train, data_test)

@@ -9,6 +9,22 @@ class RelationalFeatureAnalyzer(object):
 	Performs relational feature analysis for a given sequence of words
 	"""
 	
+	def __is_punctuation(self, token):
+		"""
+		Checks if a token is a punctuation symbol or not (apart from dot and comma)
+
+		@type token: spacy object
+		@param token: item form inspection
+		@return: True if punctuation symbol (apart from comma and dot)
+		"""
+
+		if token.is_punct:
+			if token.text == "." or token.text == ",":
+				return False
+			else:
+				return True
+		return False
+
 	def __init__(self, parser_type, language):
 		# define parser type, i.e. which parser to use
 		self.parser_type = parser_type
@@ -48,7 +64,7 @@ class RelationalFeatureAnalyzer(object):
 		for token in doc:
 			# punctuation should be skipped because Stanford parser does not 
 			# handle it (the parsers should treat punctuation in the same way)
-			if token.is_punct:
+			if self.__is_punctuation(token):
 				continue
 			# the position in the list indicates the position of the word in the sentence
 			# relational information is given in the following way
