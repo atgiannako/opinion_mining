@@ -58,7 +58,7 @@ def main(args):
 		if not args.active:
 			assert args.model_path
 			minitagger.train(args.cv, sequence_data, test_data)
-			minitagger.save(args.model_path)
+			# minitagger.save(args.model_path)
 		# do active learning on the training data
 		else:
 			assert (args.active_output_path), "Active output path should not be empty"
@@ -128,6 +128,6 @@ if __name__ == "__main__":
 	argparser.add_argument("--name_lists", action="store_true", help="uses name lists obtained from the training data set")
 	argparser.add_argument("--cv", action="store_true", help="use 10-fold cross-validation")
 	argparser.add_argument("--verbose", action="store_true", help="produce some files for debugging and prints performance information")
-	argparser.add_argument("--classifier", type=str, help="type of classifier to be used", choices=["svm", "crf"], required=True)
+	argparser.add_argument("--classifier", type=str, help="type of classifier to be used", choices=["svm", "crf", "nn"], required=True)
 	parsed_args = argparser.parse_args()
 	main(parsed_args)

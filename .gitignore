@@ -19,6 +19,7 @@ code/minitagger/run_demo.py
 code/minitagger/server_test_data.txt
 code/minitagger/testing_my_code.py
 code/minitagger/testing_old_code.py
+code/minitagger/predictions/*
 code/stanford_parsing/
 code/syntaxnet/
 code/test.txt

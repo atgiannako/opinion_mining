@@ -67,6 +67,21 @@ class SequenceDataFeatureExtractor(object):
 		# classifier
 		self.classifier = classifier
 
+	def reset_feature_extractor(self):
+		"""
+		Reset dictionaries
+
+		"""
+
+		# dictionary that maps feature string to number
+		self.__map_feature_str2num = {}
+		# dictionary that maps feature number to string
+		self.__map_feature_num2str = {}
+		# dictionary that maps label string to number
+		self.__map_label_str2num = {}
+		# dictionary that maps label number to string
+		self.__map_label_num2str = {}
+
 	def num_feature_types(self):
 		"""
 		Finds the number of distinct feature types
@@ -124,9 +139,9 @@ class SequenceDataFeatureExtractor(object):
 		assert (label_string in self.__map_label_str2num), "Label string not in labelString-to-ID dictionary"
 		return self.__map_label_str2num[label_string]
 
-	def __extract_features_svm(self, sequence_data, extract_all, skip_list):
+	def __extract_features_matrix_format(self, sequence_data, extract_all, skip_list):
 		"""
-		Extracts features from the given sequence data.
+		Extracts features from the given sequence data in matrix format
 
 		@type sequence_data: SequenceData object
 		@param sequence_data: contains all word sequences and label sequences
@@ -173,9 +188,9 @@ class SequenceDataFeatureExtractor(object):
 					location_list.append((sequence_num, position))
 		return label_list, features_list, location_list
 
-	def __extract_features_crf(self, sequence_data):
+	def __extract_features_sequence_format(self, sequence_data):
 		"""
-		Extracts features from the given sequence data.
+		Extracts features from the given sequence data in sequential format
 
 		@type sequence_data: SequenceData object
 		@param sequence_data: contains all word sequences and label sequences
@@ -229,14 +244,25 @@ class SequenceDataFeatureExtractor(object):
 		@type skip_list: list
 		@param skip_list: skips extracting features from examples specified by skip_list.
 		This is used for active learning. (Pass [] to not skip any example.)
+		@type model_type: str
+		@param model_type: ML algorithm used for classification
 		@return: list of labels, list of features, list of locations (i.e. position in the corpus where each label is
 		found)
 		"""
 
-		if model_type == "svm":
-			label_list, features_list, location_list = self.__extract_features_svm(sequence_data, extract_all, skip_list)
+		# extract features in different formats based on the ML algorithm used
+		# SVM and NN require a matrix format, i.e. a 2-dimensional matrix
+		# (num of rows = num of tokens/data points in the data set | num of columns = num of features per data point)
+		if model_type == "svm" or model_type == "nn":
+			label_list, features_list, location_list = self.__extract_features_matrix_format(sequence_data, extract_all, skip_list)
+		# CRF requires a sequential format for the data
+		# the result is a list of lists of dictionaries
+		# outer list: describes the whole corpus
+		# inner lists: one list for each sentence
+		# dictionaries: the inner lists contain one dictionary for each word
+		# each dictionary contains features ids and feature values for each token
 		if model_type == "crf":
-			label_list, features_list, location_list = self.__extract_features_crf(sequence_data)
+			label_list, features_list, location_list = self.__extract_features_sequence_format(sequence_data)
 		return label_list, features_list, location_list
 
 	def __get_label(self, label):
@@ -293,10 +319,11 @@ class SequenceDataFeatureExtractor(object):
 		## end
 		else:
 			raise Exception("Unsupported feature template {0}".format(self.feature_template))
-		# map extracted raw features to numeric
-		if self.classifier == "svm":
+		# map extracted raw features to numeric (depends on the type of the classifier)
+		if self.classifier == "svm" or self.classifier == "nn":
 			numeric_features = self.__map_raw_to_numeric_features(raw_features)
 			return numeric_features
+		# do not map extracted raw features to numeric (depends on the type of the classifier)
 		if self.classifier == "crf":
 			return raw_features
 
@@ -414,13 +441,13 @@ class SequenceDataFeatureExtractor(object):
 		if (word, relative_position) not in self.morphological_feature_cache:
 			features = dict()
 			# identify word
-			features["word({0})={1}".format(relative_position, word)] = 1
+			features["word({0})={1}".format(relative_position, word.lower())] = 1
 			# check if word is capitalized
 			features["is_capitalized({0})={1}".format(relative_position, is_capitalized(word))] = 1
-			# build suffixes and preffixes for each word (up to a length of 4)
+			# build suffixes and prefixes for each word (up to a length of 4)
 			for length in range(1, 5):
-				features["prefix{0}({1})={2}".format(length, relative_position, get_prefix(word, length))] = 1
-				features["suffix{0}({1})={2}".format(length, relative_position, get_suffix(word, length))] = 1
+				features["prefix{0}({1})={2}".format(length, relative_position, get_prefix(word.lower(), length))] = 1
+				features["suffix{0}({1})={2}".format(length, relative_position, get_suffix(word.lower(), length))] = 1
 			# check if all chars are non-alphanumeric
 			features["is_all_nonalphanumeric({0})={1}".format(relative_position, is_all_nonalphanumeric(word))] = 1
 			# check if word can be converted to float, i.e. word is a number
@@ -458,12 +485,12 @@ class SequenceDataFeatureExtractor(object):
 			features = self.__morphological_features(word, 0)
 		else:
 			# add feature for the word itself
-			features["word(0)={0}".format(word)] = 1	
+			features["word(0)={0}".format(word.lower())] = 1
 		# add features for the words on the left and right side
-		features["word(-1)={0}".format(word_left1)] = 1
-		features["word(-2)={0}".format(word_left2)] = 1
-		features["word(+1)={0}".format(word_right1)] = 1
-		features["word(+2)={0}".format(word_right2)] = 1
+		features["word(-1)={0}".format(word_left1.lower())] = 1
+		features["word(-2)={0}".format(word_left2.lower())] = 1
+		features["word(+1)={0}".format(word_right1.lower())] = 1
+		features["word(+2)={0}".format(word_right2.lower())] = 1
 
 		# # check if name lists should be taken into account
 		if self.use_name_lists:

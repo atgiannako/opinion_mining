@@ -15,12 +15,28 @@ from SequenceData import SequenceData
 from model_evaluation import report_fscore
 from sklearn.metrics import confusion_matrix
 from visualize_utils import plot_confusion_matrix
+from utils import postprocess_predictions
+
+from keras.models import Sequential
+from keras.layers import Dense
+from keras.utils.np_utils import to_categorical
+from keras.constraints import maxnorm
+from keras.layers import Dropout
+from keras import backend
+from keras.callbacks import EarlyStopping
+from keras.optimizers import Adam
+from keras.initializers import glorot_uniform
+
+
+import sklearn_crfsuite
+
+# for reproducibility
+np.random.seed(6)
 
 LIBLINEAR_PATH = os.path.join(os.path.dirname(__file__), "liblinear-1.96/python")
 sys.path.append(os.path.abspath(LIBLINEAR_PATH))
 import liblinearutil
 
-import sklearn_crfsuite
 
 class Minitagger(object):
 	"""
@@ -35,6 +51,8 @@ class Minitagger(object):
 		self.__liblinear_model = None
 		# CRF classifier
 		self.__crf_classifier = None
+		# NN classifier
+		self.__nn_classifier = None
 		# flag in order to print more/less log messages
 		self.quiet = False
 		# path to output directory for active learning
@@ -67,38 +85,6 @@ class Minitagger(object):
 		"""
 
 		self.__feature_extractor = feature_extractor
-
-	def __fit_and_predict_crf(self, data_train, data_test):
-		"""
-		Fits CRF model on the given train data and predict on given test data
-		Reports performance if test data is given
-
-		@type data_train: SequenceData
-		@param data_train: the training data set
-		@type data_test: SequenceData
-		@param data_test: the test data set
-		"""
-
-		# keep the training start timestamp
-		start_time = time.time()
-		# Extract features only for labeled instances from data_train
-		[label_list, features_list, _] = self.__feature_extractor.extract_features(data_train, False, [], self.classifier)
-		# print some useful information about the data
-		if (not self.quiet) and (not self.cross_val):
-			print("{0} labeled words (out of {1})".format(len(label_list), data_train.num_of_words))
-			print("{0} label types".format(len(data_train.label_count)))
-			print("{0} word types".format(len(data_train.word_count)))
-			print("\"{0}\" feature template".format(self.__feature_extractor.feature_template))
-			print("{0} feature types".format(self.__feature_extractor.num_feature_types()))
-		# define problem to be trained using the parameters received from the feature_extractor
-		self.__crf_classifier.fit(features_list, label_list)
-		self.__feature_extractor.is_training = False
-		[label_list, features_list, _] = self.__feature_extractor.extract_features(data_test, False, [], self.classifier)
-		# make predictions using the CRF classifier
-		pred_labels = self.__crf_classifier.predict(features_list)
-		if self.verbose:
-			# report performance achieved using the CRF classifier
-			self.__report_performance(data_test, pred_labels)
 
 	def __report_performance(self, data_test, pred_labels):
 		"""
@@ -161,7 +147,9 @@ class Minitagger(object):
 		# 		print(row)
 		# 	print()
 		file_name = os.path.join(self.prediction_path, "predictions.txt")
-		exact_fscore, inexact_fscore, conll_fscore = report_fscore(file_name, self.cross_val)
+		modified_file_name = os.path.join(self.prediction_path, "modified_predictions.txt")
+		postprocess_predictions(file_name, modified_file_name)
+		exact_fscore, inexact_fscore, conll_fscore = report_fscore(modified_file_name, self.cross_val)
 		# report f-scores
 		print("Exact f-scrore: {0:.3f}".format(exact_fscore))
 		print("Inexact f-scrore: {0:.3f}".format(inexact_fscore))
@@ -170,6 +158,35 @@ class Minitagger(object):
 			self.exact_fscore_list.append(exact_fscore)
 			self.inexact_fscore_list.append(inexact_fscore)
 			self.conll_fscore_list.append(conll_fscore)
+
+	def __fit_and_predict_crf(self, data_train, data_test):
+		"""
+		Fits CRF model on the given train data and predict on given test data
+		Reports performance if test data is given
+
+		@type data_train: SequenceData
+		@param data_train: the training data set
+		@type data_test: SequenceData
+		@param data_test: the test data set
+		"""
+
+		# Extract features only for labeled instances from data_train
+		[label_list, features_list, _] = self.__feature_extractor.extract_features(data_train, False, [], self.classifier)
+		# print some useful information about the data
+		if (not self.quiet) and (not self.cross_val):
+			print("{0} labeled words (out of {1})".format(len(label_list), data_train.num_of_words))
+			print("{0} label types".format(len(data_train.label_count)))
+			print("{0} word types".format(len(data_train.word_count)))
+			print("\"{0}\" feature template".format(self.__feature_extractor.feature_template))
+		# define problem to be trained using the parameters received from the feature_extractor
+		self.__crf_classifier.fit(features_list, label_list)
+		self.__feature_extractor.is_training = False
+		[label_list, features_list, _] = self.__feature_extractor.extract_features(data_test, False, [], self.classifier)
+		# make predictions using the CRF classifier
+		pred_labels = self.__crf_classifier.predict(features_list)
+		if self.verbose:
+			# report performance achieved using the CRF classifier
+			self.__report_performance(data_test, pred_labels)
 
 	def __fit_and_predict_svm(self, data_train, data_test):
 		"""
@@ -184,6 +201,8 @@ class Minitagger(object):
 
 		# keep the training start timestamp
 		start_time = time.time()
+		# reset the feature extractor dictionaries
+		self.__feature_extractor.reset_feature_extractor()
 		# Extract features only for labeled instances from data_train
 		[label_list, features_list, _] = self.__feature_extractor.extract_features(data_train, False, [], self.classifier)
 		# print some useful information about the data
@@ -212,6 +231,116 @@ class Minitagger(object):
 				self.quiet = quiet_value
 				print("Test set accuracy: {0:.3f}%".format(acc))
 
+	def __build_nn(self, num_features, hidden_units):
+		"""
+		Build NN model
+
+		@type num_features: int
+		@param num_features: number of features
+		@type hidden_units: list
+		@param hidden_units: number of neurons per hidden layer
+		"""
+
+		# define model
+		self.__nn_classifier = Sequential()
+		# initializer
+		initializer = glorot_uniform(1234)
+		# define input_dim and number of units in the next hidden layer (e.g. 32)
+		self.__nn_classifier.add(Dense(hidden_units[0], input_dim=num_features, init=initializer, activation="relu", W_constraint=maxnorm(3)))
+		if len(hidden_units) == 2:
+			# add dropout
+			self.__nn_classifier.add(Dropout(0.2, seed=1223))
+			# add 2nd hidden layer
+			self.__nn_classifier.add(Dense(hidden_units[1], init=initializer, activation="relu", W_constraint=maxnorm(3)))
+		# define output layer with 3 classes and softmax activation function
+		self.__nn_classifier.add(Dense(3, init=initializer, activation="softmax"))
+		# Compile model
+		adam = Adam(lr=0.001, decay=1e-3)
+		self.__nn_classifier.compile(loss="binary_crossentropy", optimizer=adam, metrics=["accuracy"])
+
+	def __fit_and_predict_nn(self, data_train, data_test):
+		"""
+		Fits NN model on the given train data and predict on given test data
+		Reports performance if test data is given
+
+		@type data_train: SequenceData
+		@param data_train: the training data set
+		@type data_test: SequenceData
+		@param data_test: the test data set
+		"""
+
+		# keep the training start timestamp
+		start_time = time.time()
+		# reset the feature extractor dictionaries
+		self.__feature_extractor.reset_feature_extractor()
+		# Extract features only for labeled instances from data_train
+		[label_list, features_list, _] = self.__feature_extractor.extract_features(data_train, False, [], self.classifier)
+		# print some useful information about the data
+		if (not self.quiet) and (not self.cross_val):
+			print("{0} labeled words (out of {1})".format(len(label_list), data_train.num_of_words))
+			print("{0} label types".format(len(data_train.label_count)))
+			print("{0} word types".format(len(data_train.word_count)))
+			print("\"{0}\" feature template".format(self.__feature_extractor.feature_template))
+			print("{0} feature types".format(self.__feature_extractor.num_feature_types()))
+		# get number of features
+		num_features = self.__feature_extractor.num_feature_types()
+		# get number of data points
+		num_datapoints = len(features_list)
+		# build X matrix for input to the NN: X = num_datapoints x num_features
+		X_train = np.zeros([num_datapoints, num_features])
+		for i, features_dict in enumerate(features_list):
+			for key, value in features_dict.items():
+				# set values in the X matrix according to the dictionary
+				X_train[i, key - 1] = value
+		# the labels [1,2,3] should be converted to [0,1,2]
+		label_list = np.array(label_list) - 1
+		# the labels should be converted to categorical values (0 becomes [0 0 0], 1 becomes [0 1 0], etc)
+		y_train = to_categorical(label_list)
+
+		# build model
+		# self.__build_nn(num_features, [128, 64])
+		# # define early stopping parameter
+		# early_stop = EarlyStopping(monitor="val_loss", min_delta=0.001)
+		# # Fit the model
+		# self.__nn_classifier.fit(X_train, y_train, epochs=10, batch_size=16, verbose=1, validation_split=0.05, callbacks=[early_stop])
+
+		# retrain model using the optimum number of epochs
+		self.__build_nn(num_features, [128, 64])
+		# self.__nn_classifier.fit(X_train, y_train, nb_epoch=early_stop.stopped_epoch+1, batch_size=64, verbose=1)
+		self.__nn_classifier.fit(X_train, y_train, epochs=10, batch_size=16, verbose=1, shuffle=False)
+
+		# extract features for the test set
+		self.__feature_extractor.is_training = False
+		[label_list, features_list, _] = self.__feature_extractor.extract_features(data_test, False, [], self.classifier)
+		# number of data points in the test set
+		num_datapoints = len(features_list)
+		# build X matrix for input to the NN: X = num_datapoints x num_features
+		X_test = np.zeros([num_datapoints, num_features])
+		for i, features_dict in enumerate(features_list):
+			for key, value in features_dict.items():
+				# set values in the X matrix according to the dictionary
+				X_test[i, key-1] = value
+		# make predictions
+		y_pred = self.__nn_classifier.predict(X_test)
+		# restore/clear keras backend session
+		backend.clear_session()
+		# convert softmax output to labels [1,2,3] by taking the index of the max for each label (+1)
+		y_pred = np.argmax(y_pred, axis=1) + 1
+		# convert predictions to str
+		y_pred = y_pred.astype(str)
+		# convert labels from numbers to BIO
+		y_pred[y_pred == "1"] = self.__feature_extractor.get_label_string(1)
+		y_pred[y_pred == "2"] = self.__feature_extractor.get_label_string(2)
+		y_pred[y_pred == "3"] = self.__feature_extractor.get_label_string(3)
+		# convert to list
+		y_pred = y_pred.tolist()
+		# report performance
+		if self.verbose:
+			# parse predictions
+			pred_labels = self.__parse_predictions(data_test, y_pred)
+			# report performance
+			self.__report_performance(data_test, pred_labels)
+
 	def train(self, cv, data_train, data_test):
 		"""
 		Trains Minitagger on the given train data. If test data is given, it reports the accuracy of the trained model
@@ -239,7 +368,7 @@ class Minitagger(object):
 			data_set = np.array(data_set)
 			# initialize CRF object if CRF is used
 			if self.classifier == "crf":
-				self.__crf_classifier = sklearn_crfsuite.CRF()
+				self.__crf_classifier = sklearn_crfsuite.CRF(algorithm="lbfgs", all_possible_states=True, all_possible_transitions=True, c1=0.1, c3=0.1)
 			# perform cross validation
 			kf = KFold(n_splits=folds, random_state=6)
 			# iterate through the data set and create train and test sets
@@ -265,10 +394,15 @@ class Minitagger(object):
 					self.__fit_and_predict_svm(data_train, data_test)
 				if self.classifier == "crf":
 					self.__fit_and_predict_crf(data_train, data_test)
+				if self.classifier == "nn":
+					self.__fit_and_predict_nn(data_train, data_test)
 				# set training flag to true for the next iteration
 				self.__feature_extractor.is_training = True
 			# is_training is False after CV
 			self.__feature_extractor.is_training = False
+			assert(len(self.exact_fscore_list) == folds), "Length mismatch"
+			assert(len(self.inexact_fscore_list) == folds), "Length mismatch"
+			assert(len(self.conll_fscore_list) == folds), "Length mismatch"
 			print("\nCross-validation finished:")
 			print("\tExact f-scrore: {0:.3f}".format(np.mean(self.exact_fscore_list)))
 			print("\tInexact f-scrore: {0:.3f}".format(np.mean(self.inexact_fscore_list)))
@@ -279,7 +413,6 @@ class Minitagger(object):
 			logger = open("results.csv", "a")
 			logger.write(s)
 			logger.close()
-			sys.exit()
 		else:
 			# build two lists with targets and frequent words from the training set
 			targets, frequent_words = build_name_lists(keep_all=True)
@@ -289,8 +422,11 @@ class Minitagger(object):
 			# in case the CV is not enabled, use the given train and test data to fit and predict
 			if self.classifier == "svm":
 				self.__fit_and_predict_svm(data_train, data_test)
-			else:
+			if self.classifier == "crf":
+				self.__crf_classifier = sklearn_crfsuite.CRF(algorithm="lbfgs", all_possible_states=True, all_possible_transitions=True, c1=0.1, c3=0.1)
 				self.__fit_and_predict_crf(data_train, data_test)
+			if self.classifier == "nn":
+				self.__fit_and_predict_nn(data_train, data_test)
 
 	def save(self, model_path):
 		"""

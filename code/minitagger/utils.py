@@ -227,3 +227,49 @@ def analyze_data(data_path):
     if is_prediction:
         print("Per-instance accuracy: {0:.3f}%".format(per_instance_accuracy))
         print("Per-sequence accuracy: {0:.3f}%".format(per_sequence_accuracy))
+
+def postprocess_predictions(file_name, modified_file_name):
+    f = open(file_name, "r")
+    words = []
+    gold_labels = []
+    pred_labels = []
+    sequence_data = []
+    for line in f:
+        tokens = line.strip().split()
+        if len(tokens) == 3:
+            words.append(tokens[0])
+            gold_labels.append(tokens[1])
+            pred_labels.append(tokens[2])
+        else:
+            for i in range(len(pred_labels)):
+                if i == 0:
+                    if pred_labels[i] == "I":
+                        pred_labels[i] = "B"
+                else:
+                    if pred_labels[i] == "I" and pred_labels[i-1] == "O":
+                        pred_labels[i] = "B"
+            sequence_data.append([words, gold_labels, pred_labels])
+            words = []
+            gold_labels = []
+            pred_labels = []
+    if words:
+        for i in range(len(pred_labels)):
+            if i == 0:
+                if pred_labels[i] == "I":
+                    pred_labels[i] = "B"
+            else:
+                if pred_labels[i] == "I" and pred_labels[i-1] == "O":
+                    pred_labels[i] = "B"
+        sequence_data.append([words, gold_labels, pred_labels])
+        words = []
+        gold_labels = []
+        pred_labels = []
+    f.close()
+
+    g = open(modified_file_name, "w")
+    for words, gold_labels, pred_labels in sequence_data:
+        for i in range(len(words)):
+            line = words[i] + " " + gold_labels[i] + " " + pred_labels[i] + "\n"
+            g.write(line)
+        g.write("\n")
+    g.close()

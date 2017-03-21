@@ -9,9 +9,6 @@ def extract_frequent_words(targets):
 		for token in item.strip().split():
 			w = token.strip().translate(translator)
 			frequent_words[w.lower()] += 1
-			frequent_words[w.upper()] += 1
-			if w != w.lower() and w != w.upper():
-				frequent_words[w] += 1
 	frequent_words = [key for key in frequent_words.keys() if frequent_words[key] > 4]
 	return frequent_words
 
@@ -21,11 +18,11 @@ def extract_targets(datapoints, keep_all):
 	if not keep_all:
 		for index in datapoints:
 			for target in all_targets[index]:
-				targets[target] += 1
+				targets[target.lower()] += 1
 	else:
 		for _, tar in all_targets.items():
 			for item in tar:
-				targets[item] += 1
+				targets[item.lower()] += 1
 	targets = [key for key in targets.keys() if targets[key] > 2]
 	return targets
 

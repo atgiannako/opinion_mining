@@ -1,8 +1,0 @@
-"I	<NO_GOLD_LABEL>	O
-love	<NO_GOLD_LABEL>	O
-the	<NO_GOLD_LABEL>	O
-spices	<NO_GOLD_LABEL>	B
-on	<NO_GOLD_LABEL>	O
-their	<NO_GOLD_LABEL>	O
-steak	<NO_GOLD_LABEL>	B
-"	<NO_GOLD_LABEL>	O
