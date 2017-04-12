@@ -26,6 +26,9 @@ def main(args):
 	if args.enable_embeddings:
 		assert args.embedding_path, "Embeddings path should be specified when embeddings are enabled"
 
+	if args.morphological_features == "fasttext":
+		assert args.embedding_path, "Embeddings path should be specified when fasttext morphological features are enabled"
+
 	if args.feature_template == "relational":
 		assert (args.arc_label or args.arc_head or args.pos_tag or args.head_pos or args.pos_window), "Cannot create relational features"
 
@@ -61,6 +64,7 @@ def main(args):
 			# minitagger.save(args.model_path)
 		# do active learning on the training data
 		else:
+			assert args.classifier == "svm", "Active learning is supported by SVM"
 			assert (args.active_output_path), "Active output path should not be empty"
 			assert (args.classifier == "svm"), "Classifier should be SVM for active learning"
 			# assign the right parameters to minitagger
@@ -72,25 +76,12 @@ def main(args):
 	# predict labels in the given data.
 	else:
 		assert args.model_path
-		minitagger.load(args.model_path)
-		pred_labels, _ = minitagger.predict(sequence_data)
-
-		# optional prediction output
-		# write predictions to file
-		if args.prediction_path:
-			file_name = os.path.join(args.prediction_path, "predictions.txt")
-			with open(file_name, "w") as outfile:
-				label_index = 0
-				for sequence_num, (word_sequence, label_sequence) in enumerate(sequence_data.sequence_pairs):
-					for position, word in enumerate(word_sequence):
-						if not label_sequence[position] is None:
-							gold_label = label_sequence[position]
-						else:
-							gold_label = ABSENT_GOLD_LABEL
-						outfile.write(word + "\t" + gold_label + "\t" + pred_labels[label_index] + "\n")
-						label_index += 1
-					if sequence_num < len(sequence_data.sequence_pairs) - 1:
-						outfile.write("\n")
+		minitagger.verbose = args.verbose
+		if minitagger.verbose:
+			assert args.prediction_path, "Path for prediction should be specified"
+			minitagger.prediction_path = args.prediction_path
+		minitagger.load(args.model_path, args.classifier)
+		minitagger.predict(sequence_data, args.classifier)
 
 if __name__ == "__main__":
 	argparser = argparse.ArgumentParser()
@@ -101,7 +92,7 @@ if __name__ == "__main__":
 	argparser.add_argument("--train", action="store_true", help="train the tagger on the given data")
 	argparser.add_argument("--feature_template", type=str, default="baseline",
 						   help="feature template (default: %(default)s)")
-	argparser.add_argument("--morphological_features", action="store_true", help="use morphological features")
+	argparser.add_argument("--morphological_features", type=str, help="use morphological features", choices=["None", "regular", "fasttext"], default=None)
 	argparser.add_argument("--embedding_length", type=int, default=50, help="vector length for word embeddings", choices=[50, 100, 200, 300])
 	argparser.add_argument("--embedding_path", type=str, help="path to word embeddings")
 	argparser.add_argument("--bitstring_path", type=str, help="path to word bit strings (from a hierarchy of word types)")

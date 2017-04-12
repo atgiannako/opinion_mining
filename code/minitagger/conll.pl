@@ -189,10 +189,11 @@ if (not $latex) {
    # printf "processed $tokenCounter tokens with $foundCorrect phrases; ";
    # printf "found: $foundGuessed phrases; correct: $correctChunk.\n";
    if ($tokenCounter>0) {
-      # printf "accuracy: %6.2f%%; ",100*$correctTags/$tokenCounter;
-      # printf "precision: %6.2f%%; ",$precision;
-      # printf "recall: %6.2f%%; ",$recall;
-      # printf "FB1: %6.2f\n",$FB1;
+      printf "\nCONLL full report:\n";
+      printf "accuracy: %6.2f%%; ",100*$correctTags/$tokenCounter;
+      printf "precision: %6.2f%%; ",$precision;
+      printf "recall: %6.2f%%; ",$recall;
+      printf "FB1: %6.2f\n",$FB1;
 	  # print to file
 	  open(FILE, "> conll_fscore.txt");
 	  printf FILE "%0.3f\n", $FB1/100;

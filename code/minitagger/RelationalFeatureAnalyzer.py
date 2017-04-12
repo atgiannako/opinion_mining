@@ -43,6 +43,38 @@ class RelationalFeatureAnalyzer(object):
 		else:
 			raise Exception("Unsupported parser type {0}".format(self.parser_type))
 
+	def __dependencies_to_root(self, token):
+		"""
+		Walk up the syntactic tree and collect dependencies to the root of the given token
+		@param token: Spacy token
+		@return: list of dependencies
+		"""
+
+		deps_to_root = []
+		while token.head is not token:
+			deps_to_root.append(token.dep_)
+			token = token.head
+			deps_to_root.append(token.dep_)
+		if not deps_to_root:
+			deps_to_root.append("ROOT")
+		return "|".join(deps_to_root)
+
+	def __pos_tags_to_root(self, token):
+		"""
+		Walk up the syntactic tree and collect POS tags to the root of the given token
+		@param token: Spacy token
+		@return: list of pos tags
+		"""
+
+		pos_to_root = []
+		while token.head is not token:
+			pos_to_root.append(token.pos_)
+			token = token.head
+			pos_to_root.append(token.pos_)
+		if not pos_to_root:
+			pos_to_root.append("None")
+		return "|".join(pos_to_root)
+
 	def __relational_features_analysis_spacy(self, word_sequence):
 		"""
 		Takes a list of words that represents a sentence and performs relational feature analysis using the spacy parser.
@@ -70,7 +102,9 @@ class RelationalFeatureAnalyzer(object):
 			# relational information is given in the following way
 			# ['label of incoming arc' | 'token at the source of the arc' | 'entity type' | 'entity iob']
 			# relational_analysis.append([token.dep_, token.head.text, token.ent_type, token.ent_iob_])
-			relational_analysis.append([token.dep_, token.head.text, token.pos_, token.head.pos_])
+			dep_path = self.__dependencies_to_root(token)
+			pos_path = self.__pos_tags_to_root(token)
+			relational_analysis.append([token.dep_, token.head.text, token.pos_, token.head.pos_, dep_path, pos_path])
 		return relational_analysis
 
 	def __relational_features_analysis_stanford(self, word_sequence):

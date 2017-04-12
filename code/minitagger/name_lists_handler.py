@@ -13,7 +13,7 @@ def extract_frequent_words(targets):
 	return frequent_words
 
 def extract_targets(datapoints, keep_all):
-	all_targets = pickle.load(open("../../data/name_lists.p", "rb"))
+	all_targets = pickle.load(open("../../data/name_lists_laptops.p", "rb"))
 	targets = Counter()
 	if not keep_all:
 		for index in datapoints:

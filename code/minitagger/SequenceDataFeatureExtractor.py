@@ -3,6 +3,7 @@ import sys
 import math
 import random
 import pickle
+import fasttext
 import numpy as np
 from utils import *
 # from collections import Counter
@@ -40,7 +41,7 @@ class SequenceDataFeatureExtractor(object):
 		# sequence of POS tags in a window around the word
 		self.pos_window = False
 		# flag to include morphological features or not
-		self.include_morphological_features = morphological_features
+		self.morphological_features = morphological_features
 		# use name lists
 		self.use_name_lists = name_lists
 		# dictionary that maps feature string to number
@@ -221,7 +222,7 @@ class SequenceDataFeatureExtractor(object):
 			sequence_label_list = []
 			sequence_feature_list = []
 			for position, label in enumerate(label_sequence):
-				assert (label is not None), "CRF model: all instances should be labeled"
+				# assert (label is not None), "CRF model: all instances should be labeled"
 				# append label id to label list
 				sequence_label_list.append(label)
 				# append feature id in features list
@@ -356,7 +357,7 @@ class SequenceDataFeatureExtractor(object):
 					numeric_features[self.__map_feature_str2num[raw_feature]] = raw_features[raw_feature]
 		return numeric_features
 
-	def load_word_embeddings(self, embedding_path, embedding_length):
+	def load_word_embeddings(self, embedding_path, embedding_length=300):
 		"""
 		Loads word embeddings from a file in the given path
 
@@ -365,29 +366,43 @@ class SequenceDataFeatureExtractor(object):
 		"""
 
 		# load the word embeddings dictionary
-		print("Loading word embeddings...")
-		file_name = "word_embeddings_" + str(embedding_length) + ".p"
-		file_name = os.path.join(embedding_path, file_name)
-		self.__word_embeddings = pickle.load(open(file_name, "rb"))
-		# the token for unknown word types must be present
-		assert (self.unknown_symbol in self.__word_embeddings), "The token for unknown word types must be present in the embeddings file"
+		if "glove" in embedding_path:
+			print("Loading gloVe word embeddings...")
+			file_name = "word_embeddings_" + str(embedding_length) + ".p"
+			file_name = os.path.join(embedding_path, file_name)
+			# load glove word embeddings
+			self.__word_embeddings = pickle.load(open(file_name, "rb"))
+			# the token for unknown word types must be present
+			assert (self.unknown_symbol in self.__word_embeddings), "The <?> must be present in the embeddings file"
+		if "fasttext" in embedding_path:
+			print("Loading FastText word embeddings...")
+			# fasttext supports only word embeddings with 300 dimensionality
+			assert (embedding_length == 300), "Embedding length should be 300 when using FastText"
+			file_name = os.path.join(embedding_path, "wiki.en.bin")
+			# load fasttext word embeddings
+			self.__word_embeddings = fasttext.load_model(file_name)
+			# the token for unknown word types must be present
+			# assert (self.unknown_symbol in self.__word_embeddings), "The <?> must be present in the embeddings file"
+		assert self.__word_embeddings is not None, "Use glove or FastText embeddings"
+		print("Words embeddings loaded")
 
 		# address some treebank token conventions.
-		if "(" in self.__word_embeddings:
-			self.__word_embeddings["-LCB-"] = self.__word_embeddings["("]
-			self.__word_embeddings["-LRB-"] = self.__word_embeddings["("]
-			self.__word_embeddings["*LCB*"] = self.__word_embeddings["("]
-			self.__word_embeddings["*LRB*"] = self.__word_embeddings["("]
-		if ")" in self.__word_embeddings:
-			self.__word_embeddings["-RCB-"] = self.__word_embeddings[")"]
-			self.__word_embeddings["-RRB-"] = self.__word_embeddings[")"]
-			self.__word_embeddings["*RCB*"] = self.__word_embeddings[")"]
-			self.__word_embeddings["*RRB*"] = self.__word_embeddings[")"]
-		if "\"" in self.__word_embeddings:
-			self.__word_embeddings["``"] = self.__word_embeddings["\""]
-			self.__word_embeddings["''"] = self.__word_embeddings["\""]
-			self.__word_embeddings["`"] = self.__word_embeddings["\""]
-			self.__word_embeddings["'"] = self.__word_embeddings["\""]
+		if "glove" in embedding_path:
+			if "(" in self.__word_embeddings:
+				self.__word_embeddings["-LCB-"] = self.__word_embeddings["("]
+				self.__word_embeddings["-LRB-"] = self.__word_embeddings["("]
+				self.__word_embeddings["*LCB*"] = self.__word_embeddings["("]
+				self.__word_embeddings["*LRB*"] = self.__word_embeddings["("]
+			if ")" in self.__word_embeddings:
+				self.__word_embeddings["-RCB-"] = self.__word_embeddings[")"]
+				self.__word_embeddings["-RRB-"] = self.__word_embeddings[")"]
+				self.__word_embeddings["*RCB*"] = self.__word_embeddings[")"]
+				self.__word_embeddings["*RRB*"] = self.__word_embeddings[")"]
+			if "\"" in self.__word_embeddings:
+				self.__word_embeddings["``"] = self.__word_embeddings["\""]
+				self.__word_embeddings["''"] = self.__word_embeddings["\""]
+				self.__word_embeddings["`"] = self.__word_embeddings["\""]
+				self.__word_embeddings["'"] = self.__word_embeddings["\""]
 
 	def load_word_bitstrings(self, bitstring_path):
 		"""
@@ -443,17 +458,40 @@ class SequenceDataFeatureExtractor(object):
 			# identify word
 			features["word({0})={1}".format(relative_position, word.lower())] = 1
 			# check if word is capitalized
-			features["is_capitalized({0})={1}".format(relative_position, is_capitalized(word))] = 1
+			# features["is_capitalized({0})={1}".format(relative_position, is_capitalized(word))] = 1
 			# build suffixes and prefixes for each word (up to a length of 4)
-			for length in range(1, 5):
-				features["prefix{0}({1})={2}".format(length, relative_position, get_prefix(word.lower(), length))] = 1
-				features["suffix{0}({1})={2}".format(length, relative_position, get_suffix(word.lower(), length))] = 1
+			if self.morphological_features == "regular":
+				for length in range(1, 5):
+					features["prefix{0}({1})={2}".format(length, relative_position, get_prefix(word.lower(), length))] = 1
+					features["suffix{0}({1})={2}".format(length, relative_position, get_suffix(word.lower(), length))] = 1
+			# # use fasttext to create morphological features
+			# if self.morphological_features == "fasttext":
+			# 	for length in range(1, 5):
+			# 		# get prefix of word
+			# 		prefix = get_prefix(word.lower(), length)
+			# 		if prefix in self.__word_embeddings:
+			# 			# get the word embeddings for the prefix
+			# 			prefix_embedding = self.__word_embeddings[prefix]
+			# 			# normalize embeddings
+			# 			prefix_embedding /= np.linalg.norm(prefix_embedding)
+			# 			# enrich given features dict
+			# 			for i, value in enumerate(prefix_embedding):
+			# 				features["ngram{0}({1})_at({2})".format(length, relative_position, (i + 1))] = value
+			# 		else:
+			# 			# initialize embeddings to zero
+			# 			prefix_embedding = np.zeros((300))
+			# 			# create a unique numpy array for each prefix of a specific length
+			# 			prefix_embedding[length-1] = 1
+			# 			# normalize embeddings
+			# 			prefix_embedding /= np.linalg.norm(prefix_embedding)
+			# 			# enrich given features dict
+			# 			for i, value in enumerate(prefix_embedding):
+			# 				features["ngram{0}({1})_at({2})".format(length, relative_position, (i + 1))] = value
 			# check if all chars are non-alphanumeric
 			features["is_all_nonalphanumeric({0})={1}".format(relative_position, is_all_nonalphanumeric(word))] = 1
 			# check if word can be converted to float, i.e. word is a number
 			features["is_float({0})={1}".format(relative_position, is_float(word))] = 1
 			self.morphological_feature_cache[(word, relative_position)] = features
-		
 		# Return a copy so that modifying that object doesn't modify the cache.
 		return self.morphological_feature_cache[(word, relative_position)].copy()
 
@@ -480,7 +518,7 @@ class SequenceDataFeatureExtractor(object):
 		# initialize features dictionary
 		features = {}
 		# check if morphological features should be used
-		if self.include_morphological_features:
+		if self.morphological_features != "None":
 			# extract morphological features
 			features = self.__morphological_features(word, 0)
 		else:
@@ -648,8 +686,9 @@ class SequenceDataFeatureExtractor(object):
 			head_pos = relational_analysis[position][3]
 			features["head_pos={0}".format(head_pos)] = 1
 		if self.pos_window:
-			# get the POS tags from the previous and the next word
-			indexes = np.array(range(-1,2)) + position
+			# get the POS tags from the previous and the next words
+			window = np.array(range(-1,2))
+			indexes = window + position
 			pos_sequence = []
 			for p in indexes:
 				if p < 0:
@@ -662,10 +701,25 @@ class SequenceDataFeatureExtractor(object):
 					# get POS tag of adjacent word
 					tag = relational_analysis[p][2]
 				pos_sequence.append(tag)
+
 			# create features from the adjacent POS tags
-			features["pos_at(-1)={0}".format(pos_sequence[0])] = 1
-			features["pos_at(+1)={0}".format(pos_sequence[2])] = 1
+			# features["pos_at(-1)={0}".format(pos_sequence[0])] = 1
+			# features["pos_at(+1)={0}".format(pos_sequence[2])] = 1
+
+			# create feature names
+			for p, at in enumerate(window):
+				# skip POS tag for the current word
+				if at != 0:
+					if at < 0:
+						# create features for previous words
+						features["pos_at({0})={1}".format(at, pos_sequence[p])] = 1
+					else:
+						# create features for next words
+						features["pos_at(+{0})={1}".format(at, pos_sequence[p])] = 1
 		
+		# features["dep_path={0}".format(relational_analysis[position][4])] = 1
+		# features["pos_path={0}".format(relational_analysis[position][5])] = 1
+
 		# relational features enriched with word embeddings
 		if self.enable_embeddings:
 			# # assumes binary feature values
