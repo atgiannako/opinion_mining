@@ -458,7 +458,7 @@ class SequenceDataFeatureExtractor(object):
 			# identify word
 			features["word({0})={1}".format(relative_position, word.lower())] = 1
 			# check if word is capitalized
-			# features["is_capitalized({0})={1}".format(relative_position, is_capitalized(word))] = 1
+			features["is_capitalized({0})={1}".format(relative_position, is_capitalized(word))] = 1
 			# build suffixes and prefixes for each word (up to a length of 4)
 			if self.morphological_features == "regular":
 				for length in range(1, 5):
